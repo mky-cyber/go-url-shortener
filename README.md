@@ -1,2 +1,2 @@
 # go-url-shortener
-first commit
+A simple url shortener written in go.
