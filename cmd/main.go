@@ -8,11 +8,6 @@ import (
 	"os"
 )
 
-var NewUrl string = "https://github.com"
-
-//	shortener := &model.URLShortener{
-//		URLs: make(map[string]string),
-//	}
 func main() {
 	port := "8080"
 	addr := flag.String("addr", ":"+port, "HTTP network address")
