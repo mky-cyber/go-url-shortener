@@ -23,8 +23,7 @@ func randomGenerator() *rand.Rand {
 	return rand.New(rand.NewSource(time.Now().UnixNano()))
 }
 
-// TODO check if the new key already exists in the map
-func GenerateShortURLKey(length int) string {
+func generateRandomKey(length int) string {
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
 	r := randomGenerator()
@@ -33,6 +32,17 @@ func GenerateShortURLKey(length int) string {
 		key[i] = charset[r.Intn(len(charset))]
 	}
 	return string(key)
+}
+
+func GenerateShortURLKey(URLs map[string]string, length int) string {
+	var key string
+	for {
+		key = generateRandomKey(length)
+		if _, exists := URLs[key]; !exists {
+			break
+		}
+	}
+	return key
 }
 
 func IsValidURL(URL string) bool {

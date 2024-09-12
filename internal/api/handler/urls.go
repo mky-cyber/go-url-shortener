@@ -97,7 +97,7 @@ func ShortenedURL(shortener *model.URLShortener) httprouter.Handle {
 
 		fmt.Printf("Generating shortened URL for %s \n", req.URL)
 		// Generate a unique key and save it in the map
-		shortenedURLKey := GenerateShortURLKey(6)
+		shortenedURLKey := GenerateShortURLKey(shortener.URLs, 16)
 
 		// Handle corrency
 		var mu sync.Mutex
