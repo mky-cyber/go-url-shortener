@@ -28,6 +28,7 @@ func Routes() http.Handler {
 	// TODO add a post endpoint that handles url shortener
 	router.GET("/ping", pong)
 	router.GET("/s/:shortenedURL", handler.OpenShortenedURL(shortener))
+	router.POST("/shorten", handler.ShortenedURL(shortener))
 	standard := alice.New()
 
 	return standard.Then(router)
