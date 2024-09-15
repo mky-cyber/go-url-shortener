@@ -6,6 +6,7 @@ import (
 	h "go-url-shortener/internal/api/http"
 	"go-url-shortener/internal/model"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 
@@ -21,22 +22,12 @@ func OpenShortenedURL(shortener *model.URLShortener) httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		// Retrieve the shortened URL from the path parameter
 		shortenedURL := ps.ByName("shortenedURL")
-		if shortenedURL == "" {
-			http.Error(w, "Shortened URL is empty", http.StatusBadRequest)
-			return
-		}
-
-		fmt.Printf("Attempting to retrieve %s.\n", shortenedURL)
-
 		// Check if the shortened URL exists in the map
 		originalURL, found := shortener.URLs[shortenedURL]
 		if !found {
 			http.Error(w, "Shortened URL not found", http.StatusNotFound)
 			return
 		}
-
-		fmt.Printf("Redirecting to %s.\n", originalURL)
-
 		// Redirect to the original URL
 		http.Redirect(w, r, originalURL, http.StatusSeeOther)
 	}
@@ -45,7 +36,6 @@ func OpenShortenedURL(shortener *model.URLShortener) httprouter.Handle {
 func ShortenedURL(shortener *model.URLShortener) httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		var req h.URLRequest
-		fmt.Printf("Attempting to shorten URL\n")
 		// Decode the JSON from request body
 		err := json.NewDecoder(r.Body).Decode(&req)
 		if err != nil {
@@ -79,7 +69,6 @@ func ShortenedURL(shortener *model.URLShortener) httprouter.Handle {
 
 		// Check if the URL already exists
 		for shortKey, original := range shortener.URLs {
-			fmt.Printf("Checking if URL exists \n")
 			if original == req.URL {
 				response := h.URLResponse{
 					Result:  fmt.Sprintf("http://localhost:8080/s/%s", shortKey),
@@ -99,18 +88,29 @@ func ShortenedURL(shortener *model.URLShortener) httprouter.Handle {
 		// Generate a unique key and save it in the map
 		shortenedURLKey := GenerateShortURLKey(shortener.URLs, 16)
 
-		// Handle corrency
+		// Handle concurrent processes
 		var mu sync.Mutex
 		mu.Lock()
 		shortener.URLs[shortenedURLKey] = req.URL
 		mu.Unlock()
 
+		// setup the url dynamically based on the request host
+		scheme := "http"
+		if r.TLS != nil {
+			scheme = "https"
+		}
+		shortenedURL := url.URL{
+			Scheme: scheme,
+			Host:   r.Host,
+			Path:   fmt.Sprintf("/s/%s", shortenedURLKey),
+		}
+
 		response := h.URLResponse{
-			Result:  fmt.Sprintf("http://localhost:8080/s/%s", shortenedURLKey),
+			Result:  shortenedURL.String(),
 			Message: "URL successfully shortened",
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
+		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(response)
 	}
 }

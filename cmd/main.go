@@ -9,7 +9,10 @@ import (
 )
 
 func main() {
-	port := "8080"
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
 	addr := flag.String("addr", ":"+port, "HTTP network address")
 
 	infoLog := log.New(os.Stdout, "INFO\t", log.Ldate|log.Ltime)

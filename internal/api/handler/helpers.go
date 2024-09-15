@@ -47,7 +47,7 @@ func GenerateShortURLKey(URLs map[string]string, length int) string {
 
 func IsValidURL(URL string) bool {
 	u, err := url.ParseRequestURI(URL)
-	if err != nil || u.Scheme != "http" || u.Scheme != "https" {
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
 		return false
 	}
 	return true
