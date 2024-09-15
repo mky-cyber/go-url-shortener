@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	h "go-url-shortener/internal/api/http"
-	"go-url-shortener/internal/model"
+	"go-url-shortener/internal/models"
 	"net/http"
 	"net/url"
 	"strings"
@@ -18,22 +18,35 @@ const maxURLLength = 2048
 
 // openShortenedURL retrives the original URL using the shortened URL provided,
 // then redirect the user to the original URL
-func OpenShortenedURL(shortener *model.URLShortener) httprouter.Handle {
+func OpenShortenedURL(sd models.ShortenerDataInterface) httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		// Retrieve the shortened URL from the path parameter
-		shortenedURL := ps.ByName("shortenedURL")
-		// Check if the shortened URL exists in the map
-		originalURL, found := shortener.URLs[shortenedURL]
-		if !found {
+		shortenedURLKey := ps.ByName("shortenedURLKey")
+		if !isValidURLKey(shortenedURLKey) {
+			SendErrorResponse(w, "Shortened URL is invalid", http.StatusNotFound)
+			return
+		}
+
+		// Check if the shortened URL exists in the db
+		data, err := sd.Get(shortenedURLKey)
+		if err != nil {
 			http.Error(w, "Shortened URL not found", http.StatusNotFound)
 			return
 		}
+
+		// Increase the clicks for monitor purpose
+		err = sd.IncreaseClicks(shortenedURLKey)
+		if err != nil {
+			http.Error(w, "Unable to update the clicks", http.StatusInternalServerError)
+			return
+		}
+
 		// Redirect to the original URL
-		http.Redirect(w, r, originalURL, http.StatusSeeOther)
+		http.Redirect(w, r, data.OriginalURL, http.StatusSeeOther)
 	}
 }
 
-func ShortenedURL(shortener *model.URLShortener) httprouter.Handle {
+func ShortenedURL(sd models.ShortenerDataInterface) httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		var req h.URLRequest
 		// Decode the JSON from request body
@@ -67,34 +80,25 @@ func ShortenedURL(shortener *model.URLShortener) httprouter.Handle {
 			return
 		}
 
-		// Check if the URL already exists
-		for shortKey, original := range shortener.URLs {
-			if original == req.URL {
-				response := h.URLResponse{
-					Result:  fmt.Sprintf("http://localhost:8080/s/%s", shortKey),
-					Message: "URL is already shortened",
-				}
-				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(response)
-				return
-			}
-		}
+		// setup the url dynamically based on the request host
 
 		// TODO add a rate limit
 		// TODO add a blacklist for banned urls
 		// TODO check speical characters
 
-		fmt.Printf("Generating shortened URL for %s \n", req.URL)
-		// Generate a unique key and save it in the map
-		shortenedURLKey := GenerateShortURLKey(shortener.URLs, 16)
+		// Generate a unique key and save it in db
+		shortenedURLKey := GenerateShortURLKey()
 
 		// Handle concurrent processes
 		var mu sync.Mutex
 		mu.Lock()
-		shortener.URLs[shortenedURLKey] = req.URL
+		rowsAffected, err := sd.Insert(req.URL, shortenedURLKey, 0)
 		mu.Unlock()
 
-		// setup the url dynamically based on the request host
+		if rowsAffected != 1 || err != nil {
+			SendErrorResponse(w, "Failed to create shortened URL", http.StatusInternalServerError)
+			return
+		}
 		scheme := "http"
 		if r.TLS != nil {
 			scheme = "https"

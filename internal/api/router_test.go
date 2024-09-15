@@ -1,6 +1,8 @@
 package api
 
 import (
+	"go-url-shortener/internal/models"
+	"go-url-shortener/internal/models/mocks"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -9,8 +11,23 @@ import (
 	"testing"
 )
 
+type testServer struct {
+	*httptest.Server
+}
+
+type testCases struct {
+	name                    string
+	method                  string
+	urlPath                 string
+	body                    io.Reader
+	expectedStatusCode      int
+	expectedResponseMessage string
+}
+
 func TestPingRoute(t *testing.T) {
-	ts := httptest.NewTLSServer(Routes())
+	mockDB := mockDB()
+	app := NewApp(mockDB)
+	ts := httptest.NewTLSServer(app.Routes())
 	defer ts.Close()
 
 	rs, err := ts.Client().Get(ts.URL + "/ping")
@@ -23,8 +40,21 @@ func TestPingRoute(t *testing.T) {
 	}
 }
 
-type testServer struct {
-	*httptest.Server
+func mockDB() *mocks.MockShortenerData {
+	return &mocks.MockShortenerData{
+		MockData: map[string]*models.ShortenerData{
+			"abcabc1234567890": {
+				OriginalURL:     "https://github.com/",
+				ShortenedURLKEY: "abcabc1234567890",
+				Clicks:          10,
+			},
+			"https://amazon.com/": {
+				OriginalURL:     "https://github.com/",
+				ShortenedURLKEY: "abcabc1234567890",
+				Clicks:          10,
+			},
+		},
+	}
 }
 
 func newTestServer(t *testing.T, h http.Handler) *testServer {
@@ -73,32 +103,33 @@ func runTestCase(
 	}
 }
 
-type testCases struct {
-	name                    string
-	method                  string
-	urlPath                 string
-	body                    io.Reader
-	expectedStatusCode      int
-	expectedResponseMessage string
-}
-
 func TestRedirect(t *testing.T) {
-	ts := newTestServer(t, Routes())
+	mockDB := mockDB()
+	app := NewApp(mockDB)
+	ts := newTestServer(t, app.Routes())
 	defer ts.Close()
 
 	testCases := []testCases{
 		{
 			name:                    "Valid Redirect",
 			method:                  "GET",
-			urlPath:                 "/s/abc123",
+			urlPath:                 "/s/abcabc1234567890",
 			body:                    nil,
 			expectedStatusCode:      http.StatusSeeOther,
 			expectedResponseMessage: `<a href="https://github.com/">See Other</a>.`,
 		},
 		{
-			name:                    "URL not found",
+			name:                    "URL is invalid",
 			method:                  "GET",
 			urlPath:                 "/s/invalid-url",
+			body:                    nil,
+			expectedStatusCode:      http.StatusNotFound,
+			expectedResponseMessage: `Shortened URL is invalid`,
+		},
+		{
+			name:                    "URL not found",
+			method:                  "GET",
+			urlPath:                 "/s/abcabc1234567999",
 			body:                    nil,
 			expectedStatusCode:      http.StatusNotFound,
 			expectedResponseMessage: `Shortened URL not found`,
@@ -113,7 +144,9 @@ func TestRedirect(t *testing.T) {
 }
 
 func TestShortenURL(t *testing.T) {
-	ts := newTestServer(t, Routes())
+	mockDB := mockDB()
+	app := NewApp(mockDB)
+	ts := newTestServer(t, app.Routes())
 	defer ts.Close()
 
 	testCases := []testCases{
@@ -121,7 +154,7 @@ func TestShortenURL(t *testing.T) {
 			name:                    "Shorten the URL successfully",
 			method:                  "POST",
 			urlPath:                 "/shorten",
-			body:                    strings.NewReader(`{"url": "https://amazon.com"}`),
+			body:                    strings.NewReader(`{"url": "https://amazon.com/"}`),
 			expectedStatusCode:      http.StatusOK,
 			expectedResponseMessage: "URL successfully shortened",
 		},
@@ -164,14 +197,6 @@ func TestShortenURL(t *testing.T) {
 			body:                    strings.NewReader(`{"url": "https://www.aurlthatprobabilynotexist.com/"}`),
 			expectedStatusCode:      http.StatusBadRequest,
 			expectedResponseMessage: "The URL was not reachable",
-		},
-		{
-			name:                    "URL already exists",
-			method:                  "POST",
-			urlPath:                 "/shorten",
-			body:                    strings.NewReader(`{"url": "https://google.com/"}`),
-			expectedStatusCode:      http.StatusOK,
-			expectedResponseMessage: "URL is already shortened",
 		},
 	}
 
