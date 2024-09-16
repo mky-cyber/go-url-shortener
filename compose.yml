@@ -9,6 +9,9 @@ services:
       context: .
     environment:
       - PORT=${PORT:-8080}
+      - DATABASE_PATH=${DATABASE_PATH:-/opt/database.db}
+    volumes:
+      - ./db/database.db:/opt/database.db
     command:
       - /bin/sh
       - -c

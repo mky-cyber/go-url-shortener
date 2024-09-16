@@ -46,11 +46,16 @@ func mockDB() *mocks.MockShortenerData {
 			"abcabc1234567890": {
 				OriginalURL:     "https://github.com/",
 				ShortenedURLKEY: "abcabc1234567890",
-				Clicks:          10,
+				Clicks:          19,
 			},
 			"https://amazon.com/": {
-				OriginalURL:     "https://github.com/",
+				OriginalURL:     "https://amazon.com/",
 				ShortenedURLKEY: "abcabc1234567890",
+				Clicks:          53,
+			},
+			"https://google.com/": {
+				OriginalURL:     "https://google.com/",
+				ShortenedURLKEY: "abcabc1234568789",
 				Clicks:          10,
 			},
 		},
@@ -197,6 +202,14 @@ func TestShortenURL(t *testing.T) {
 			body:                    strings.NewReader(`{"url": "https://www.aurlthatprobabilynotexist.com/"}`),
 			expectedStatusCode:      http.StatusBadRequest,
 			expectedResponseMessage: "The URL was not reachable",
+		},
+		{
+			name:                    "URL already exists",
+			method:                  "POST",
+			urlPath:                 "/shorten",
+			body:                    strings.NewReader(`{"url": "https://google.com/"}`),
+			expectedStatusCode:      http.StatusOK,
+			expectedResponseMessage: "URL is already shortened",
 		},
 	}
 

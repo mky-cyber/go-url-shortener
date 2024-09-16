@@ -5,6 +5,7 @@ import (
 	"fmt"
 	h "go-url-shortener/internal/api/http"
 	"go-url-shortener/internal/models"
+	"go-url-shortener/internal/utils"
 	"net/http"
 	"net/url"
 	"strings"
@@ -14,7 +15,7 @@ import (
 )
 
 // Max length for URLs
-const maxURLLength = 2048
+const MaxURLLength = 2048
 
 // openShortenedURL retrives the original URL using the shortened URL provided,
 // then redirect the user to the original URL
@@ -22,7 +23,7 @@ func OpenShortenedURL(sd models.ShortenerDataInterface) httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		// Retrieve the shortened URL from the path parameter
 		shortenedURLKey := ps.ByName("shortenedURLKey")
-		if !isValidURLKey(shortenedURLKey) {
+		if !utils.IsValidURLKey(shortenedURLKey) {
 			SendErrorResponse(w, "Shortened URL is invalid", http.StatusNotFound)
 			return
 		}
@@ -37,7 +38,7 @@ func OpenShortenedURL(sd models.ShortenerDataInterface) httprouter.Handle {
 		// Increase the clicks for monitor purpose
 		err = sd.IncreaseClicks(shortenedURLKey)
 		if err != nil {
-			http.Error(w, "Unable to update the clicks", http.StatusInternalServerError)
+			http.Error(w, "Unable to update the clicks", http.StatusBadRequest)
 			return
 		}
 
@@ -69,8 +70,8 @@ func ShortenedURL(sd models.ShortenerDataInterface) httprouter.Handle {
 		}
 
 		// Check if the URL is too long
-		if len(req.URL) > maxURLLength {
-			SendErrorResponse(w, fmt.Sprintf("URL exceeds the maximum length of %d characters", maxURLLength), http.StatusBadRequest)
+		if len(req.URL) > MaxURLLength {
+			SendErrorResponse(w, fmt.Sprintf("URL exceeds the maximum length of %d characters", MaxURLLength), http.StatusBadRequest)
 			return
 		}
 
@@ -80,23 +81,18 @@ func ShortenedURL(sd models.ShortenerDataInterface) httprouter.Handle {
 			return
 		}
 
-		// setup the url dynamically based on the request host
-
 		// TODO add a rate limit
 		// TODO add a blacklist for banned urls
 		// TODO check speical characters
 
-		// Generate a unique key and save it in db
-		shortenedURLKey := GenerateShortURLKey()
-
 		// Handle concurrent processes
 		var mu sync.Mutex
 		mu.Lock()
-		rowsAffected, err := sd.Insert(req.URL, shortenedURLKey, 0)
+		shortenedURLKey, msg, err := sd.Insert(req.URL, 0)
 		mu.Unlock()
 
-		if rowsAffected != 1 || err != nil {
-			SendErrorResponse(w, "Failed to create shortened URL", http.StatusInternalServerError)
+		if len(shortenedURLKey) != utils.URLKeyLength || err != nil {
+			SendErrorResponse(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		scheme := "http"
@@ -111,7 +107,7 @@ func ShortenedURL(sd models.ShortenerDataInterface) httprouter.Handle {
 
 		response := h.URLResponse{
 			Result:  shortenedURL.String(),
-			Message: "URL successfully shortened",
+			Message: msg,
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)

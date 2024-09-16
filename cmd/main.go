@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 
 	_ "modernc.org/sqlite"
 )
@@ -22,13 +23,16 @@ func main() {
 	infoLog := log.New(os.Stdout, "INFO\t", log.Ldate|log.Ltime)
 	errorLog := log.New(os.Stderr, "ERROR\t", log.Ldate|log.Ltime|log.Lshortfile)
 
-	dbFile := "../db/update/database.db"
-	db, err := sql.Open("sqlite", dbFile)
+	dbPath := os.Getenv("DATABASE_PATH")
+	if dbPath == "" {
+		dbPath, _ = filepath.Abs("db/migrations/database.db")
+	}
+	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
-		log.Fatal(err)
+		errorLog.Fatalf("Failed to open the database: %v", err)
 	}
 	if err = db.Ping(); err != nil {
-		log.Fatal(err)
+		errorLog.Fatalf("Failed to ping the database: %v", err)
 	}
 	defer db.Close()
 
