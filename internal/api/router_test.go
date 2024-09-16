@@ -3,29 +3,15 @@ package api
 import (
 	"go-url-shortener/internal/models"
 	"go-url-shortener/internal/models/mocks"
-	"io"
+	"go-url-shortener/internal/utils/test"
 	"net/http"
-	"net/http/cookiejar"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
 
-type testServer struct {
-	*httptest.Server
-}
-
-type testCases struct {
-	name                    string
-	method                  string
-	urlPath                 string
-	body                    io.Reader
-	expectedStatusCode      int
-	expectedResponseMessage string
-}
-
 func TestPingRoute(t *testing.T) {
-	mockDB := mockDB()
+	mockDB := mocks.MockDB()
 	app := NewApp(mockDB)
 	ts := httptest.NewTLSServer(app.Routes())
 	defer ts.Close()
@@ -62,88 +48,42 @@ func mockDB() *mocks.MockShortenerData {
 	}
 }
 
-func newTestServer(t *testing.T, h http.Handler) *testServer {
-	ts := httptest.NewTLSServer(h)
-
-	jar, err := cookiejar.New(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ts.Client().Jar = jar
-
-	ts.Client().CheckRedirect = func(req *http.Request, via []*http.Request) error {
-		return http.ErrUseLastResponse
-	}
-
-	return &testServer{ts}
-}
-
-func runTestCase(
-	t *testing.T,
-	ts *testServer,
-	tc testCases,
-) {
-	req, err := http.NewRequest(tc.method, ts.URL+tc.urlPath, tc.body)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	rs, err := ts.Client().Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if rs.StatusCode != tc.expectedStatusCode {
-		t.Errorf("got %d; want %d", rs.StatusCode, tc.expectedStatusCode)
-	}
-
-	bodyBytes, err := io.ReadAll(rs.Body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	responseMessage := string(bodyBytes)
-	if !strings.Contains(responseMessage, tc.expectedResponseMessage) {
-		t.Errorf("got %s; want %s", responseMessage, tc.expectedResponseMessage)
-	}
-}
-
 func TestRedirect(t *testing.T) {
 	mockDB := mockDB()
 	app := NewApp(mockDB)
-	ts := newTestServer(t, app.Routes())
+	ts := test.NewTestServer(t, app.Routes())
 	defer ts.Close()
 
-	testCases := []testCases{
+	testCases := []test.TestCases{
 		{
-			name:                    "Valid Redirect",
-			method:                  "GET",
-			urlPath:                 "/s/abcabc1234567890",
-			body:                    nil,
-			expectedStatusCode:      http.StatusSeeOther,
-			expectedResponseMessage: `<a href="https://github.com/">See Other</a>.`,
+			Name:                    "Valid Redirect",
+			Method:                  "GET",
+			URLPath:                 "/s/abcabc1234567890",
+			Body:                    nil,
+			ExpectedStatusCode:      http.StatusSeeOther,
+			ExpectedResponseMessage: `<a href="https://github.com/">See Other</a>.`,
 		},
 		{
-			name:                    "URL is invalid",
-			method:                  "GET",
-			urlPath:                 "/s/invalid-url",
-			body:                    nil,
-			expectedStatusCode:      http.StatusNotFound,
-			expectedResponseMessage: `Shortened URL is invalid`,
+			Name:                    "URL is invalid",
+			Method:                  "GET",
+			URLPath:                 "/s/invalid-url",
+			Body:                    nil,
+			ExpectedStatusCode:      http.StatusBadRequest,
+			ExpectedResponseMessage: `Shortened URL is invalid`,
 		},
 		{
-			name:                    "URL not found",
-			method:                  "GET",
-			urlPath:                 "/s/abcabc1234567999",
-			body:                    nil,
-			expectedStatusCode:      http.StatusNotFound,
-			expectedResponseMessage: `Shortened URL not found`,
+			Name:                    "URL not found",
+			Method:                  "GET",
+			URLPath:                 "/s/abcabc1234567999",
+			Body:                    nil,
+			ExpectedStatusCode:      http.StatusNotFound,
+			ExpectedResponseMessage: `Shortened URL not found`,
 		},
 	}
 
 	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			runTestCase(t, ts, tc)
+		t.Run(tc.Name, func(t *testing.T) {
+			test.RunTestCase(t, ts, tc)
 		})
 	}
 }
@@ -151,71 +91,71 @@ func TestRedirect(t *testing.T) {
 func TestShortenURL(t *testing.T) {
 	mockDB := mockDB()
 	app := NewApp(mockDB)
-	ts := newTestServer(t, app.Routes())
+	ts := test.NewTestServer(t, app.Routes())
 	defer ts.Close()
 
-	testCases := []testCases{
+	testCases := []test.TestCases{
 		{
-			name:                    "Shorten the URL successfully",
-			method:                  "POST",
-			urlPath:                 "/shorten",
-			body:                    strings.NewReader(`{"url": "https://amazon.com/"}`),
-			expectedStatusCode:      http.StatusOK,
-			expectedResponseMessage: "URL successfully shortened",
+			Name:                    "Shorten the URL successfully",
+			Method:                  "POST",
+			URLPath:                 "/shorten",
+			Body:                    strings.NewReader(`{"url": "https://amazon.com/"}`),
+			ExpectedStatusCode:      http.StatusOK,
+			ExpectedResponseMessage: "URL successfully shortened",
 		},
 		{
-			name:                    "Invalid JSON payload",
-			method:                  "POST",
-			urlPath:                 "/shorten",
-			body:                    strings.NewReader(`{"https://google.com"}`),
-			expectedStatusCode:      http.StatusBadRequest,
-			expectedResponseMessage: "Invalid JSON payload",
+			Name:                    "Invalid JSON payload",
+			Method:                  "POST",
+			URLPath:                 "/shorten",
+			Body:                    strings.NewReader(`{"https://google.com"}`),
+			ExpectedStatusCode:      http.StatusBadRequest,
+			ExpectedResponseMessage: "Invalid JSON payload",
 		},
 		{
-			name:                    "URL is missing",
-			method:                  "POST",
-			urlPath:                 "/shorten",
-			body:                    strings.NewReader(`{"url": ""}`),
-			expectedStatusCode:      http.StatusBadRequest,
-			expectedResponseMessage: "Missing url in the request payload",
+			Name:                    "URL is missing",
+			Method:                  "POST",
+			URLPath:                 "/shorten",
+			Body:                    strings.NewReader(`{"url": ""}`),
+			ExpectedStatusCode:      http.StatusBadRequest,
+			ExpectedResponseMessage: "Missing url in the request payload",
 		},
 		{
-			name:                    "Invalid URL",
-			method:                  "POST",
-			urlPath:                 "/shorten",
-			body:                    strings.NewReader(`{"url": "htt://google.com"}`),
-			expectedStatusCode:      http.StatusBadRequest,
-			expectedResponseMessage: "Invalid URL",
+			Name:                    "Invalid URL",
+			Method:                  "POST",
+			URLPath:                 "/shorten",
+			Body:                    strings.NewReader(`{"url": "htt://google.com"}`),
+			ExpectedStatusCode:      http.StatusBadRequest,
+			ExpectedResponseMessage: "Invalid URL",
 		},
 		{
-			name:                    "Exceeds the maxium length",
-			method:                  "POST",
-			urlPath:                 "/shorten",
-			body:                    strings.NewReader(`{"url": "https://www.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.com"}`),
-			expectedStatusCode:      http.StatusBadRequest,
-			expectedResponseMessage: "URL exceeds the maximum length of 2048 characters",
+			Name:                    "Exceeds the maxium length",
+			Method:                  "POST",
+			URLPath:                 "/shorten",
+			Body:                    strings.NewReader(`{"url": "https://www.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.com"}`),
+			ExpectedStatusCode:      http.StatusBadRequest,
+			ExpectedResponseMessage: "URL exceeds the maximum length of 2048 characters",
 		},
 		{
-			name:                    "Not reachable URL",
-			method:                  "POST",
-			urlPath:                 "/shorten",
-			body:                    strings.NewReader(`{"url": "https://www.aurlthatprobabilynotexist.com/"}`),
-			expectedStatusCode:      http.StatusBadRequest,
-			expectedResponseMessage: "The URL was not reachable",
+			Name:                    "Not reachable URL",
+			Method:                  "POST",
+			URLPath:                 "/shorten",
+			Body:                    strings.NewReader(`{"url": "https://www.aurlthatprobabilynotexist.com/"}`),
+			ExpectedStatusCode:      http.StatusBadRequest,
+			ExpectedResponseMessage: "The URL was not reachable",
 		},
 		{
-			name:                    "URL already exists",
-			method:                  "POST",
-			urlPath:                 "/shorten",
-			body:                    strings.NewReader(`{"url": "https://google.com/"}`),
-			expectedStatusCode:      http.StatusOK,
-			expectedResponseMessage: "URL is already shortened",
+			Name:                    "URL already exists",
+			Method:                  "POST",
+			URLPath:                 "/shorten",
+			Body:                    strings.NewReader(`{"url": "https://google.com/"}`),
+			ExpectedStatusCode:      http.StatusOK,
+			ExpectedResponseMessage: "URL is already shortened",
 		},
 	}
 
 	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			runTestCase(t, ts, tc)
+		t.Run(tc.Name, func(t *testing.T) {
+			test.RunTestCase(t, ts, tc)
 		})
 	}
 }

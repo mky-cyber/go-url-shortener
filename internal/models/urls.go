@@ -68,6 +68,9 @@ func (m *ShortenerDBModel) IncreaseClicks(shortenedKey string) error {
 }
 
 // Insert inserts a new record into the urls table
+// Need to returns 3 arguments shortenedURLKey, responseMessage and error to handle cases like
+// case 1: original url is already shortened, return the shortened url key
+// case 2: generated key is already used for another url, retry the key generation for a max 5 times
 func (m *ShortenerDBModel) Insert(originalURL string, clicks int) (string, string, error) {
 	var shortenedKey string
 	query := `INSERT INTO urls  (original_url, shortened_url_key, clicks) VALUES(?, ?, ?)`

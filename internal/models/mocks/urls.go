@@ -9,6 +9,28 @@ type MockShortenerData struct {
 	MockData map[string]*models.ShortenerData
 }
 
+func MockDB() *MockShortenerData {
+	return &MockShortenerData{
+		MockData: map[string]*models.ShortenerData{
+			"abcabc1234567890": {
+				OriginalURL:     "https://github.com/",
+				ShortenedURLKEY: "abcabc1234567890",
+				Clicks:          19,
+			},
+			"https://amazon.com/": {
+				OriginalURL:     "https://amazon.com/",
+				ShortenedURLKEY: "abcabc1234567890",
+				Clicks:          53,
+			},
+			"https://google.com/": {
+				OriginalURL:     "https://google.com/",
+				ShortenedURLKEY: "abcabc1234568789",
+				Clicks:          10,
+			},
+		},
+	}
+}
+
 func (m *MockShortenerData) Get(shortened string) (*models.ShortenerData, error) {
 	if data, ok := m.MockData[shortened]; ok {
 		return data, nil
