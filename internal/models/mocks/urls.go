@@ -12,16 +12,19 @@ type MockShortenerData struct {
 func MockDB() *MockShortenerData {
 	return &MockShortenerData{
 		MockData: map[string]*models.ShortenerData{
+			// this mocks a valid redirect by passing a shortened url key
 			"abcabc1234567890": {
 				OriginalURL:     "https://github.com/",
 				ShortenedURLKEY: "abcabc1234567890",
 				Clicks:          19,
 			},
+			// this mocks a valid shortened url
 			"https://amazon.com/": {
 				OriginalURL:     "https://amazon.com/",
 				ShortenedURLKEY: "abcabc1234567890",
 				Clicks:          53,
 			},
+			// this mocks if the long url is already shortened
 			"https://google.com/": {
 				OriginalURL:     "https://google.com/",
 				ShortenedURLKEY: "abcabc1234568789",
